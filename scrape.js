@@ -1,21 +1,12 @@
 const puppeteer = require('puppeteer');
 
-const headless = true
+const headless = false
 
-async function getCategories() {
-
-    const browser = await puppeteer.launch({ headless: headless }) // {headless: false}
-    const page = await browser.newPage()
+async function getCategories(page) {
 
     await page.goto('http://books.toscrape.com/catalogue/category/books/travel_2/index.html')
 
-    if (!headless) {
-
-        await page.setViewport({ width: 1200, height: 1040 })
-        await page.waitFor(2000)
-    }
-
-    const allCategories = await page.evaluate(() => {
+    return await page.evaluate(() => {
 
         let data = []
 
@@ -36,37 +27,30 @@ async function getCategories() {
 
         return data
     })
-
-    browser.close()
-
-    return allCategories
 }
 
-async function getCategoryResultsCount(href) {
-
-    const browser = await puppeteer.launch({ headless: headless }) // {headless: false}
-    const page = await browser.newPage()
+async function getCategoryResultsCount(page, href) {
 
     await page.goto(href)
 
-    const count = await page.evaluate(() => {
+    return await page.evaluate(() => {
 
         return document.querySelector('#default > div > div > div > div > form > strong').innerText
     })
-
-    browser.close()
-
-    return count
 }
 
 async function getAllCategoriesWithResultsCount() {
 
-    let categories = await getCategories()
+    const browser = await puppeteer.launch({ headless: headless }) // {headless: false}
+    const page = await browser.newPage()
+
+    let categories = await getCategories(page)
+
     let data = []
 
     for (let i = 0; i < categories.length; i++) {
 
-        let count = await getCategoryResultsCount(categories[i].href)
+        let count = await getCategoryResultsCount(page, categories[i].href)
 
         data.push({
 
@@ -75,9 +59,12 @@ async function getAllCategoriesWithResultsCount() {
         })
     }
 
+    browser.close()
+
     return data
 }
 
 getAllCategoriesWithResultsCount().then((value) => {
+
     console.log(value); // Success!
-});
+})
