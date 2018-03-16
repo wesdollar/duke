@@ -1,4 +1,5 @@
-const puppeteer = require('puppeteer');
+const fs = require("fs")
+const puppeteer = require('puppeteer')
 
 const headless = true
 
@@ -148,7 +149,8 @@ async function run() {
     return result
 }
 
-run().then((value) => {
+run().then((result) => {
 
-    console.log(value)
+    // console.log(value)
+    fs.writeFileSync('scrape-results.json', JSON.stringify(result))
 })
