@@ -1,4 +1,5 @@
 const fs = require("fs")
+const notifier = require('node-notifier')
 const puppeteer = require('puppeteer')
 
 const headless = true
@@ -55,7 +56,7 @@ async function getAllProductLinksOnPage(page, href) {
 
 async function parseAllProductPagesInCategory(page, href, categoryTitle) {
 
-    let pages = await getAllProductLinksOnPage(page, href)
+    let pages = await getAllProductLinksInCategory(page, href)
 
     let data = {
         meta: {
@@ -92,15 +93,75 @@ async function getBookInfoByPage(page, href) {
     })
 }
 
-// async function getCategoryResultsCount(page, href) {
-//
-//     await page.goto(href)
-//
-//     return await page.evaluate(() => {
-//
-//         return document.querySelector('#default > div > div > div > div > form > strong').innerText
-//     })
-// }
+async function getAllProductLinksInCategory(page, href) {
+
+    // return await getAllProductLinksOnPage(page, href)
+    // let nextEl = document.querySelector('ul.pager li.next a')
+
+    let results = await getCategoryResultsCount(page, href)
+    let resultsPerPage = 20
+    let pages = Math.ceil(results / resultsPerPage)
+
+    let links = []
+
+    for (let i = 0; i < pages; i++) {
+
+        let next = await page.evaluate(() => {
+
+            let nextEl = document.querySelector('ul.pager li.next a')
+
+            if (nextEl) {
+
+                return nextEl.href
+            }
+            else {
+
+                return false
+            }
+        })
+
+        if (next !== false) {
+
+            links.push( await getAllProductLinksOnPage(page, href) )
+
+            // navigate to the next page so the loop is on the next page when it starts over
+            // await page.goto(next)
+
+            href = next
+        }
+        else {
+
+            links.push( await getAllProductLinksOnPage(page, href) )
+        }
+    }
+
+    let data = []
+
+    for (let i = 0; i < links.length; i++) {
+
+        for (let j = 0; j < links[i].length; j++) {
+
+            let link = links[i][j]
+
+            data.push({
+                title: link.title,
+                href: link.href,
+            })
+        }
+    }
+
+    return data
+}
+
+async function getCategoryResultsCount(page, href) {
+
+    await page.goto(href)
+
+    return await page.evaluate(() => {
+
+        return document.querySelector('#default > div > div > div > div > form > strong').innerText
+    })
+}
 
 // async function getAllCategoriesWithResultsCount() {
 //
@@ -152,5 +213,27 @@ async function run() {
 run().then((result) => {
 
     // console.log(value)
+
     fs.writeFileSync('scrape-results.json', JSON.stringify(result))
+    notifier.notify('Scrape complete!');
 })
+
+// async function test() {
+//
+//     const browser = await puppeteer.launch({ headless: headless }) // {headless: false}
+//     const page = await browser.newPage()
+//
+//     let entryHref = 'http://books.toscrape.com/catalogue/category/books/thriller_37/index.html'
+//
+//     let result = await getAllProductLinksInCategory(page, entryHref)
+//
+//     browser.close()
+//
+//     return result
+// }
+//
+// test().then((result) => {
+//
+//     fs.writeFileSync('scrape-results.json', JSON.stringify(result))
+//     notifier.notify('Scrape complete!');
+// })
