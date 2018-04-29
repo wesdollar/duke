@@ -5,6 +5,7 @@
   "author": "Wes Dollar",
   "license": "ISC",
   "dependencies": {
+    "messagebird": "^2.1.4",
     "puppeteer": "^1.1.1"
   },
   "devDependencies": {

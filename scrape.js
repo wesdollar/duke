@@ -1,138 +1,93 @@
 const fs = require("fs")
 const notifier = require('node-notifier')
 const puppeteer = require('puppeteer')
+const helpers = require('./helpers.js')
 
-const headless = true
-
-async function getCategories(page, href) {
-
-    await page.goto(href)
-
-    return await page.evaluate(() => {
-
-        let data = []
-
-        let categories = document.querySelectorAll('.nav ul li')
-
-        for (let i = 0; i < categories.length; i++) {
-
-            let title = categories[i].innerText
-            let link = categories[i].querySelector('a').href
-
-            data.push({
-                title: title,
-                href: link,
-            })
-        }
-
-        return data
-    })
+const config = {
+    headless: false,
+    entryHref: 'https://www.avvo.com/find-a-lawyer/all-practice-areas/il'
+    // entryHref: 'https://www.avvo.com/attorneys/35801-al-frank-ward-4315493.html'
 }
 
-async function getAllProductLinksOnPage(page, href) {
+async function getLawyersInCategory(page, href) {
 
-    await page.goto(href)
+    await page.goto(href, {'waitUntil' : 'networkidle0'})
 
-    return await page.evaluate(() => {
-
-        let els = document.querySelectorAll('.product_pod')
-        let data = []
-
-        for (let i = 0; i < els.length; i++) {
-
-            let el = els[i].querySelector('h3 a')
-            let title = el.innerText
-            let href = el.href
-
-            data.push({
-                title: title,
-                href: href,
-            })
-        }
-
-        return data
-    })
-}
-
-async function parseAllProductPagesInCategory(page, href, categoryTitle) {
-
-    let pages = await getAllProductLinksInCategory(page, href)
-
-    let data = {
-        meta: {
-            title: categoryTitle,
-            results: pages.length,
-        },
-        results: [],
-    }
-
-    for (let i = 0; i < pages.length; i++) {
-
-        let href = pages[i].href
-
-        data.results.push(await getBookInfoByPage(page, href))
-    }
-
-    return data
-}
-
-async function getBookInfoByPage(page, href) {
-
-    await page.goto(href)
-
-    return await page.evaluate(() => {
-
-        let title = document.querySelector('.product_main h1').innerText
-        let price = document.querySelector('.product_main .price_color').innerText
-
-        return {
-
-            title: title,
-            price: price,
-        }
-    })
-}
-
-async function getAllProductLinksInCategory(page, href) {
-
-    // return await getAllProductLinksOnPage(page, href)
-    // let nextEl = document.querySelector('ul.pager li.next a')
-
-    let results = await getCategoryResultsCount(page, href)
-    let resultsPerPage = 20
-    let pages = Math.ceil(results / resultsPerPage)
+    let pages = await getPageCountInPracticeArea(page, href)
 
     let links = []
 
-    for (let i = 0; i < pages; i++) {
+    for (let i = 1; i <= pages; i++) {
 
-        let next = await page.evaluate(() => {
+        let url = href + '?utf8=%E2%9C%93&page=' + i + '&sort=relevancy'
 
-            let nextEl = document.querySelector('ul.pager li.next a')
+        await page.goto(url, {'waitUntil' : 'networkidle0'})
 
-            if (nextEl) {
+        let results = await page.evaluate(async () => {
 
-                return nextEl.href
+            let captchaTitleEl = document.querySelector('.page-title-wrapper .page-title h1')
+
+            if (captchaTitleEl != null) {
+
+                // todo: PICK UP HERE
+                // todo: send growler notification with sound
+                let notifier = require('node-notifier')
+                notifier.notify('Solve Captcha!!');
+
+                let messagebird = require('messagebird')('0VGw2mLIG2kHPPcOXDln7h8Ha')
+
+                let params = {
+                    'originator': 'MessageBird',
+                    'recipients': [
+                        '2292920507'
+                    ],
+                    'body': 'Solve the captcha, fool.'
+                };
+
+                messagebird.messages.create(params, function (err, response) {
+                    if (err) {
+                        return console.log(err);
+                    }
+                    console.log(response);
+                })
+
+                // sleep to give us time to solve the captcha
+                function delay(time) {
+                    return new Promise(function(resolve) {
+                        setTimeout(resolve, time)
+                    });
+                }
+
+                await delay(30000)
             }
-            else {
 
-                return false
+            let els = document.querySelectorAll('.serp-headshot a')
+            let data = []
+
+            for (let i = 0; i < els.length; i++) {
+
+                data.push({ href: els[i].getAttribute('href')})
             }
+
+            return data
         })
 
-        if (next !== false) {
+        let pageTitle = await page.evaluate(() => {
 
-            links.push( await getAllProductLinksOnPage(page, href) )
+            return document.querySelector('#lawyer-serp-title').textContent
+        })
 
-            // navigate to the next page so the loop is on the next page when it starts over
-            // await page.goto(next)
+        pageTitle = pageTitle.replace(/\s+/g, '-').toLowerCase() + '-' + i
 
-            href = next
-        }
-        else {
+        let file = './practice-areas/' + pageTitle + '.json'
 
-            links.push( await getAllProductLinksOnPage(page, href) )
-        }
+        // write one page results to a file
+        fs.writeFileSync(file, JSON.stringify(results))
+
+        // random pause
+        // await page.waitFor(Math.random() * (5000 - 1000) + 1000)
+
+        links.push(results)
     }
 
     let data = []
@@ -144,7 +99,6 @@ async function getAllProductLinksInCategory(page, href) {
             let link = links[i][j]
 
             data.push({
-                title: link.title,
                 href: link.href,
             })
         }
@@ -153,60 +107,223 @@ async function getAllProductLinksInCategory(page, href) {
     return data
 }
 
-async function getCategoryResultsCount(page, href) {
+async function getPracticeAreasForState(page, href) {
 
-    await page.goto(href)
+    await page.goto(href, {'waitUntil' : 'networkidle0'})
+    await page.waitFor(1500)
 
     return await page.evaluate(() => {
 
-        return document.querySelector('#default > div > div > div > div > form > strong').innerText
+        let cats = document.querySelectorAll('#a-z ul.link-list li a')
+
+        let data = []
+
+        for (let i = 0; i < cats.length; i++) {
+
+            data.push({href: cats[i].getAttribute('href')})
+        }
+
+        return data
     })
 }
 
-// async function getAllCategoriesWithResultsCount() {
-//
-//     const browser = await puppeteer.launch({ headless: headless }) // {headless: false}
-//     const page = await browser.newPage()
-//
-//     let categories = await getCategories(page)
-//
-//     let data = []
-//
-//     for (let i = 0; i < categories.length; i++) {
-//
-//         let count = await getCategoryResultsCount(page, categories[i].href)
-//         // let books = await getCategoryBooks(page, categories[i].href)
-//
-//         data.push({
-//
-//             title: categories[i].title,
-//             count: count
-//         })
-//     }
-//
-//     browser.close()
-//
-//     return data
-// }
+async function getAllPracticeAreas(page, href) {
+
+    let states = [{"state":"al"},{"state":"ak"},{"state":"as"},{"state":"az"},{"state":"ar"},{"state":"ca"},{"state":"co"},{"state":"ct"},{"state":"de"},{"state":"dc"},{"state":"fl"},{"state":"ga"},{"state":"hi"},{"state":"id"},{"state":"il"},{"state":"in"},{"state":"ia"},{"state":"ks"},{"state":"ky"},{"state":"la"},{"state":"me"},{"state":"md"},{"state":"ma"},{"state":"mi"},{"state":"mn"},{"state":"ms"},{"state":"mo"},{"state":"mt"},{"state":"ne"},{"state":"nv"},{"state":"nh"},{"state":"nj"},{"state":"nm"},{"state":"ny"},{"state":"nc"},{"state":"nd"},{"state":"oh"},{"state":"ok"},{"state":"or"},{"state":"pa"},{"state":"ri"},{"state":"sc"},{"state":"sd"},{"state":"tn"},{"state":"tx"},{"state":"ut"},{"state":"vt"},{"state":"va"},{"state":"wa"},{"state":"wv"},{"state":"wi"},{"state":"wy"}]
+
+    let data = []
+
+    for (let i = 0; i < states.length; i++) {
+
+        let url = 'https://www.avvo.com/find-a-lawyer/all-practice-areas/' + states[i].state
+
+        data.push(await getPracticeAreasForState(page, url))
+    }
+
+    return data
+}
+
+async function getPageCountInPracticeArea(page, href) {
+
+    await page.goto(href, {'waitUntil' : 'networkidle0'})
+
+    return await page.evaluate(async () => {
+
+        let captchaTitleEl = document.querySelector('.page-title-wrapper .page-title h1')
+
+        if (captchaTitleEl != null) {
+
+            // sleep to give us time to solve the captcha
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            await sleep(30000) // 30 secs
+
+            // todo: PICK UP HERE
+            // todo: send growler notification with sound
+
+            // let messagebird = require('messagebird')('0VGw2mLIG2kHPPcOXDln7h8Ha')
+            //
+            // let params = {
+            //     'originator': 'MessageBird',
+            //     'recipients': [
+            //         '2292920507'
+            //     ],
+            //     'body': 'Solve the captcha, fool.'
+            // };
+            //
+            // messagebird.messages.create(params, function (err, response) {
+            //     if (err) {
+            //         return console.log(err);
+            //     }
+            //     console.log(response);
+            // });
+        }
+
+        let resultsCount = document.querySelector('#title-total-count').innerText
+        let resultsPerPage = 10
+
+        return Math.ceil(resultsCount.replace( /[^\d.]/g, '' ) / resultsPerPage)
+    })
+}
+
+async function getAllLawyersHrefInPracticeAreas(page, href) {
+
+    await page.goto(href, {'waitUntil' : 'networkidle0'})
+
+    let practiceAreas = require('./scrape-results-all-practice-areas')
+
+    let data = []
+
+    for (let i = 0; i < practiceAreas.length; i++) {
+
+        let url = 'https://www.avvo.com' + practiceAreas[i].href
+
+        data.push(await getLawyersInCategory(page, url))
+    }
+
+    return data
+}
+
+async function getLawyerData(page, href) {
+
+    await page.goto(href, {'waitUntil' : 'networkidle0'})
+    // await page.waitFor(3000)
+    await page.waitForSelector('#resume td[data-title="Origin"]')
+
+    await page.exposeFunction('cleanPracticeArea', helpers.cleanPracticeArea)
+    // await page.exposeFunction('getTextContent', helpers.getTextContent)
+
+    let data = await page.evaluate(async () => {
+
+        function getTextContent(el) {
+
+            return (el == null) ? '' : el.textContent
+        }
+        function getInnerText(el) {
+
+            return (el == null) ? '' : el.innerText
+        }
+
+        function getPreviousSiblingTextContent(el) {
+
+            return (el == null) ? '' : el.previousSibling.textContent
+        }
+
+        function getNextSiblingTextContent(el) {
+
+            return (el == null) ? '' : el.nextSibling.textContent
+        }
+
+        function getAttribute(el, attr) {
+
+            return (el == null) ? '' : el.getAttribute(attr)
+        }
+
+        // from "Copy of Lawyer Directory Template.xlsx" provided by Drew Duke
+        // all lower-cased values are not contained with above spreadsheet
+        let results = {
+            // custom
+            name: await getTextContent(document.querySelector('[itemprop="name"]')),
+
+            // matches provided db design
+            Address_Line_1: await getTextContent(document.querySelector('address p span').childNodes[0]),
+            Address_Line_2: await getTextContent(document.querySelector('address p span span')),
+            City: await getTextContent(document.querySelector('address p').childNodes[1]),
+            State_Code: await getTextContent(document.querySelector('address p').childNodes[3]),
+            Zip_Code: await getTextContent(document.querySelector('address p').childNodes[5]),
+
+            // original value: document.querySelector('span.js-v-phone-replace-text').textContent
+            // note: there are more than two possible results in node
+            Phone: await getTextContent(document.querySelectorAll('span.js-v-phone-replace-text')[1]),
+
+            Fax: await getTextContent(document.querySelectorAll('span.js-v-phone-replace-text')[2]),
+            Firm_Name: await getTextContent(document.querySelector('address .h2')),
+            Firm_Website: await getAttribute(document.querySelector('.js-address p[itemprop="url"]'), 'content'),
+            Law_School: await getPreviousSiblingTextContent(document.querySelector('td[data-title="Degree"]')),
+            Law_School_Graduation_Year: getTextContent(document.querySelector('td[data-title="Graduated"]').childNodes[0]),
+            Law_School_Degree: getTextContent(document.querySelector('td[data-title="Degree"]').childNodes[0]),
+            Bar_Admission: getTextContent(document.querySelector('#resume td[data-title="Status"]')),
+            Bar_Admission_Year: getTextContent(document.querySelector('#resume td[data-title="Origin"]')),
+
+            // todo: parse "2011 - Present"
+            First_Year_Admitted_To_Practice: getNextSiblingTextContent(document.querySelector('td[data-title="Company name"]')),
+
+            Practice_Area_1: await window.cleanPracticeArea(getInnerText(document.querySelectorAll('#practice_areas .js-specialty')[0])),
+            Practice_Area_2: await window.cleanPracticeArea(getInnerText(document.querySelectorAll('#practice_areas .js-specialty')[1])),
+            Practice_Area_3: await window.cleanPracticeArea(getInnerText(document.querySelectorAll('#practice_areas .js-specialty')[2])),
+            Practice_Area_4: await window.cleanPracticeArea(getInnerText(document.querySelectorAll('#practice_areas .js-specialty')[3])),
+            Practice_Area_5: await window.cleanPracticeArea(getInnerText(document.querySelectorAll('#practice_areas .js-specialty')[4])),
+
+            // not available
+            // Salutation: '',
+            // First_Name: '',
+            // Middle_Name: '',
+            // Last_Name: '',
+            // Suffix: '',
+            // Gender: '',
+            // Address_Line_3: '',
+            // Address_Line_4: '',
+        }
+
+        return results
+    })
+
+    let cleanLawyerName = data.name.replace(/\s+/g, '-').toLowerCase()
+
+    let file = './lawyer-data/' + data.State_Code + '-' +  cleanLawyerName + '.json'
+
+    // write one page results to a file
+    fs.writeFileSync(file, JSON.stringify(data))
+
+    return data
+}
 
 async function run() {
 
-    const browser = await puppeteer.launch({ headless: headless }) // {headless: false}
+    const browser = await puppeteer.launch({ headless: config.headless }) // {headless: false}
     const page = await browser.newPage()
 
-    let entryHref = 'http://books.toscrape.com'
+    // disable resources we don't need
+    // await page.setRequestInterception(true)
+    // page.on('request', (request) => {
+    //     if (['image', 'stylesheet', 'font'].indexOf(request.resourceType()) !== -1) {
+    //         request.abort();
+    //     } else {
+    //         request.continue();
+    //     }
+    // })
 
-    let categories = await getCategories(page, entryHref)
+    let entryHref = config.entryHref
 
+    // collect all lawyers from directory
     let result = []
+    result.push(await getAllLawyersHrefInPracticeAreas(page, entryHref))
 
-    for (let i = 0; i < categories.length; i++) {
-
-        result.push(await parseAllProductPagesInCategory(page, categories[i].href, categories[i].title))
-    }
+    // get one lawyer
+    // let result = await getLawyerData(page, entryHref)
 
     browser.close()
-
     return result
 }
 
@@ -217,23 +334,3 @@ run().then((result) => {
     fs.writeFileSync('scrape-results.json', JSON.stringify(result))
     notifier.notify('Scrape complete!');
 })
-
-// async function test() {
-//
-//     const browser = await puppeteer.launch({ headless: headless }) // {headless: false}
-//     const page = await browser.newPage()
-//
-//     let entryHref = 'http://books.toscrape.com/catalogue/category/books/thriller_37/index.html'
-//
-//     let result = await getAllProductLinksInCategory(page, entryHref)
-//
-//     browser.close()
-//
-//     return result
-// }
-//
-// test().then((result) => {
-//
-//     fs.writeFileSync('scrape-results.json', JSON.stringify(result))
-//     notifier.notify('Scrape complete!');
-// })
