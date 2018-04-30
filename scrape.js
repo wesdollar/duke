@@ -170,6 +170,10 @@ async function getPageCountInPracticeArea(page, href) {
 
         return Math.ceil(resultsCount.replace( /[^\d.]/g, '' ) / resultsPerPage)
     })
+        .catch((error) => {
+
+            console.log('Missed a category.')
+        })
 }
 
 async function getAllLawyersHrefInPracticeAreas(page, href) {
@@ -182,9 +186,14 @@ async function getAllLawyersHrefInPracticeAreas(page, href) {
 
     for (let i = 0; i < practiceAreas.length; i++) {
 
-        let url = 'https://www.avvo.com' + practiceAreas[i].href
+        let url = 'https://www.avvo.com' + practiceAreas[0].href
 
         data.push(await getLawyersInCategory(page, url))
+
+        // remove parsed directories from master list and save
+        practiceAreas.splice(0, 1)
+        let newPracticeAreaData = practiceAreas
+        fs.writeFileSync('scrape-results-all-practice-areas.json', JSON.stringify(newPracticeAreaData))
     }
 
     return data
