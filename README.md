@@ -28,7 +28,7 @@ Prerequisites: nodejs w/ npm
 
 ### (optional) Step 4: compile-lawyers.js 
 
-`compile-lawyers.js` will 
+`compile-lawyers.js` will combine all data for each lawyer into a single file for each consumption.
 
 ### Troubleshooting
 
