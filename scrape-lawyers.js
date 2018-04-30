@@ -282,13 +282,26 @@ async function getLawyerData(page, href) {
 
         return results
     })
+        .catch((error) => {
 
-    let cleanLawyerName = data.name.replace(/\s+/g, '-').toLowerCase()
+            console.log('Lawyer is missing data. Lawyer skipped.')
 
-    let file = './lawyer-data/' + data.State_Code + '-' +  cleanLawyerName + '.json'
+            return false
+        })
 
-    // write one page results to a file
-    fs.writeFileSync(file, JSON.stringify(data))
+    if (data) {
+
+        let cleanLawyerName = data.name.replace(/\s+/g, '-').toLowerCase()
+
+        let file = './lawyer-data/' + data.State_Code + '-' +  cleanLawyerName + '.json'
+
+        // write one page results to a file
+        fs.writeFileSync(file, JSON.stringify(data))
+    }
+    else {
+
+        return {}
+    }
 
     return data
 }
