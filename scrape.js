@@ -2,11 +2,49 @@ const fs = require("fs")
 const notifier = require('node-notifier')
 const puppeteer = require('puppeteer')
 const helpers = require('./helpers.js')
+const Confirm = require('prompt-confirm')
 
 const config = {
     headless: false,
     entryHref: 'https://www.avvo.com/find-a-lawyer/all-practice-areas/il'
     // entryHref: 'https://www.avvo.com/attorneys/35801-al-frank-ward-4315493.html'
+}
+
+async function captchaPrompt() {
+
+    let prompt = new Confirm({
+        name: 'captcha',
+        message: 'Did you solve the captcha?',
+    })
+
+    return await prompt.run()
+        .then((answer) => {
+
+            return !!(answer) // todo: return error
+        })
+}
+
+async function checkIfCaptcha(page) {
+
+    return await page.evaluate(async () => {
+
+        let captchaTitleEl = document.querySelector('.page-title-wrapper .page-title h1')
+
+        // check if captcha page
+        if (captchaTitleEl != null) {
+
+            // registered in getLawyersInCategory
+            await window.captchaPrompt()
+        }
+
+        return false
+    })
+        .catch((error) => {
+
+            console.log('yes')
+
+            return true
+        })
 }
 
 async function getLawyersInCategory(page, href) {
@@ -23,43 +61,14 @@ async function getLawyersInCategory(page, href) {
 
         await page.goto(url, {'waitUntil' : 'networkidle0'})
 
+        let isCaptcha = await checkIfCaptcha(page)
+
+        // if (isCaptcha) {
+        //
+        //     await page.goto(url, {'waitUntil' : 'networkidle0'})
+        // }
+
         let results = await page.evaluate(async () => {
-
-            let captchaTitleEl = document.querySelector('.page-title-wrapper .page-title h1')
-
-            if (captchaTitleEl != null) {
-
-                // todo: PICK UP HERE
-                // todo: send growler notification with sound
-                let notifier = require('node-notifier')
-                notifier.notify('Solve Captcha!!');
-
-                let messagebird = require('messagebird')('0VGw2mLIG2kHPPcOXDln7h8Ha')
-
-                let params = {
-                    'originator': 'MessageBird',
-                    'recipients': [
-                        '2292920507'
-                    ],
-                    'body': 'Solve the captcha, fool.'
-                };
-
-                messagebird.messages.create(params, function (err, response) {
-                    if (err) {
-                        return console.log(err);
-                    }
-                    console.log(response);
-                })
-
-                // sleep to give us time to solve the captcha
-                function delay(time) {
-                    return new Promise(function(resolve) {
-                        setTimeout(resolve, time)
-                    });
-                }
-
-                await delay(30000)
-            }
 
             let els = document.querySelectorAll('.serp-headshot a')
             let data = []
@@ -110,7 +119,7 @@ async function getLawyersInCategory(page, href) {
 async function getPracticeAreasForState(page, href) {
 
     await page.goto(href, {'waitUntil' : 'networkidle0'})
-    await page.waitFor(1500)
+    // await page.waitFor(1500)
 
     return await page.evaluate(() => {
 
@@ -147,38 +156,14 @@ async function getPageCountInPracticeArea(page, href) {
 
     await page.goto(href, {'waitUntil' : 'networkidle0'})
 
+    let isCaptcha = await checkIfCaptcha(page)
+
+    // if (isCaptcha) {
+    //
+    //     await page.goto(href, {'waitUntil' : 'networkidle0'})
+    // }
+
     return await page.evaluate(async () => {
-
-        let captchaTitleEl = document.querySelector('.page-title-wrapper .page-title h1')
-
-        if (captchaTitleEl != null) {
-
-            // sleep to give us time to solve the captcha
-            function sleep(ms) {
-                return new Promise(resolve => setTimeout(resolve, ms));
-            }
-            await sleep(30000) // 30 secs
-
-            // todo: PICK UP HERE
-            // todo: send growler notification with sound
-
-            // let messagebird = require('messagebird')('0VGw2mLIG2kHPPcOXDln7h8Ha')
-            //
-            // let params = {
-            //     'originator': 'MessageBird',
-            //     'recipients': [
-            //         '2292920507'
-            //     ],
-            //     'body': 'Solve the captcha, fool.'
-            // };
-            //
-            // messagebird.messages.create(params, function (err, response) {
-            //     if (err) {
-            //         return console.log(err);
-            //     }
-            //     console.log(response);
-            // });
-        }
 
         let resultsCount = document.querySelector('#title-total-count').innerText
         let resultsPerPage = 10
@@ -303,6 +288,9 @@ async function run() {
 
     const browser = await puppeteer.launch({ headless: config.headless }) // {headless: false}
     const page = await browser.newPage()
+
+    // for use inside checkIfCaptcha
+    await page.exposeFunction('captchaPrompt', captchaPrompt)
 
     // disable resources we don't need
     // await page.setRequestInterception(true)

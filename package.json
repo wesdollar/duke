@@ -6,6 +6,7 @@
   "license": "ISC",
   "dependencies": {
     "messagebird": "^2.1.4",
+    "prompt-confirm": "^1.2.0",
     "puppeteer": "^1.1.1"
   },
   "devDependencies": {
