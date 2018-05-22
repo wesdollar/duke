@@ -86,6 +86,7 @@ async function getLawyersInCategory(page, href) {
             return document.querySelector('#lawyer-serp-title').textContent
         })
 
+        pageTitle = pageTitle.replace(/[^\w\s]/gi, '')
         pageTitle = pageTitle.replace(/\s+/g, '-').toLowerCase() + '-' + i
 
         let file = './practice-areas/' + pageTitle + '.json'
@@ -292,6 +293,7 @@ async function getLawyerData(page, href) {
     if (data) {
 
         let cleanLawyerName = data.name.replace(/\s+/g, '-').toLowerCase()
+        cleanLawyerName = cleanLawyerName.replace(/[^\w\s]/gi, '')
 
         let file = './lawyer-data/' + data.State_Code + '-' +  cleanLawyerName + '.json'
 
